@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="270 270 520 484" width="24" height="24">
+  <title>Maze Terminal</title>
+  <!-- The app icon's mark without the tile, for the window header. -->
+  <defs>
+    <linearGradient id="lit" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d4d4da"/>
+    </linearGradient>
+    <linearGradient id="shade" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8e8e96"/>
+      <stop offset="1" stop-color="#4a4a50"/>
+    </linearGradient>
+  </defs>
+  <path d="M290 290 H400 L622 512 H512 Z" fill="url(#lit)"/>
+  <path d="M512 512 H622 L400 734 H290 Z" fill="url(#shade)"/>
+  <rect x="650" y="680" width="120" height="54" fill="#f2f2f4"/>
+</svg>

@@ -1,0 +1,7 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+<qresource prefix="/maze">
+    <file alias="close.svg">close.svg</file>
+    <file alias="close-hover.svg">close-hover.svg</file>
+</qresource>
+</RCC>

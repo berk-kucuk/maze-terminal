@@ -1,0 +1,852 @@
+/***************************************************************************
+ *   Copyright (C) 2006 by Vladimir Kuznetsov                              *
+ *   vovanec@gmail.com                                                     *
+ *                                                                         *
+ *   This program is free software; you can redistribute it and/or modify  *
+ *   it under the terms of the GNU General Public License as published by  *
+ *   the Free Software Foundation; either version 2 of the License, or     *
+ *   (at your option) any later version.                                   *
+ *                                                                         *
+ *   This program is distributed in the hope that it will be useful,       *
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+ *   GNU General Public License for more details.                          *
+ *                                                                         *
+ *   You should have received a copy of the GNU General Public License     *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
+ ***************************************************************************/
+
+#include <QTabBar>
+#include <QInputDialog>
+#include <QColorDialog>
+#include <QMouseEvent>
+#include <QMenu>
+#include <QActionGroup>
+#include <QMessageBox>
+#include <QTimer>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+
+#include "mainwindow.h"
+#include "termwidgetholder.h"
+#include "tabbar.h"
+#include "tabwidget.h"
+#include "maze/chrome.h"
+#include "termwidget.h"
+#include "config.h"
+#include "properties.h"
+#include "qterminalapp.h"
+#include "tab-switcher.h"
+
+
+#define TAB_INDEX_PROPERTY "tab_index"
+#define TAB_SYSTEM_TITLE_PROPERTY "system_title" // Store the system title when a custom one was set
+
+TabWidget::TabWidget(QWidget* parent) : QTabWidget(parent), tabNumerator(0), mTabBar(new TabBar(this)), mSwitcher(new TabSwitcher(this))
+{
+    // Insert our own tab bar which overrides tab width and eliding
+    setTabBar(mTabBar);
+
+    setFocusPolicy(Qt::NoFocus);
+
+    /* On Mac OS X this will look similar to
+     * the tabs in Safari or Leopard's Terminal.app .
+     * I love this!
+     */
+    setDocumentMode(true);
+
+    tabBar()->setUsesScrollButtons(true);
+
+    setMovable(true);
+    setUsesScrollButtons(true);
+
+    tabBar()->installEventFilter(this);
+
+    connect(this, &TabWidget::tabCloseRequested, this, [this](int indx) {
+        removeTab(indx, true);
+    });
+    connect(tabBar(), &QTabBar::tabMoved, this, &TabWidget::updateTabIndices);
+    connect(this, &TabWidget::tabRenameRequested, this, &TabWidget::renameSession);
+    connect(this, &TabWidget::tabTitleColorChangeRequested, this, &TabWidget::setTitleColor);
+    connect(mSwitcher.data(), &TabSwitcher::activateTab, this, &TabWidget::switchTab);
+    connect(this, &TabWidget::currentChanged, this, &TabWidget::onCurrentChanged);
+
+    // Maze Terminal: keep each tab's marks (Tor, incognito, root) in step
+    // with what is actually running in it.
+    auto *marks = new QTimer(this);
+    marks->setInterval(1200);
+    connect(marks, &QTimer::timeout, this, &TabWidget::refreshMazeMarks);
+    marks->start();
+}
+
+QString TabWidget::mazeTitle(TermWidgetHolder *holder) const
+{
+    TermWidget *term = holder ? holder->currentTerminal() : nullptr;
+    if (!term)
+        return QString();
+    TermWidgetImpl *impl = term->impl();
+
+    const int fg = impl->getForegroundProcessId();
+    if (fg > 0 && fg != impl->getShellPID())
+    {
+        QFile comm(QStringLiteral("/proc/%1/comm").arg(fg));
+        if (comm.open(QIODevice::ReadOnly))
+        {
+            const QString program = QString::fromLocal8Bit(comm.readAll()).trimmed();
+            // A shell in the foreground (a Tor tab's shell runs under
+            // entropy-shield-run) is the tab at rest: show the folder.
+            static const QStringList shells{QStringLiteral("zsh"), QStringLiteral("bash"),
+                QStringLiteral("fish"), QStringLiteral("sh"), QStringLiteral("dash")};
+            if (!program.isEmpty() && !shells.contains(program))
+                return program;
+        }
+    }
+
+    const QString dir = QDir::cleanPath(impl->workingDirectory());
+    if (dir.isEmpty())
+        return holder->property("maze_shell_title").toString();
+    if (dir == QDir::homePath())
+        return QStringLiteral("~");
+    if (dir == QLatin1String("/"))
+        return dir;
+    return QFileInfo(dir).fileName();
+}
+
+QList<Maze::TabInfo> TabWidget::mazeTabs() const
+{
+    QList<Maze::TabInfo> tabs;
+    for (int i = 0; i < count(); ++i)
+    {
+        Maze::TabInfo t;
+        t.title = tabText(i);
+        t.tooltip = tabToolTip(i);
+        auto *holder = qobject_cast<TermWidgetHolder*>(widget(i));
+        TermWidget *term = holder ? holder->currentTerminal() : nullptr;
+        if (term)
+        {
+            TermWidgetImpl *impl = term->impl();
+            QString program;
+            const int fg = impl->getForegroundProcessId();
+            if (fg > 0)
+            {
+                QFile comm(QStringLiteral("/proc/%1/comm").arg(fg));
+                if (comm.open(QIODevice::ReadOnly))
+                    program = QString::fromLocal8Bit(comm.readAll()).trimmed();
+            }
+            static const QStringList shells{QStringLiteral("zsh"), QStringLiteral("bash"),
+                QStringLiteral("fish"), QStringLiteral("sh"), QStringLiteral("dash")};
+            const bool running = fg > 0 && fg != impl->getShellPID() && !shells.contains(program);
+            if (impl->foregroundIsRoot())
+            {
+                t.badge = tr("ROOT");
+                t.solid = true;
+                t.glyph = QStringLiteral("#");
+                t.subtitle = tr("running as root");
+            }
+            else if (impl->mazeKind() == MazeKind::Tor)
+            {
+                t.badge = tr("TOR");
+                t.glyph = QStringLiteral("◎");
+                t.subtitle = tr("through Tor · history off");
+            }
+            else if (impl->mazeKind() == MazeKind::Incognito)
+            {
+                t.badge = tr("PRIVATE");
+                t.glyph = QStringLiteral("◐");
+                t.subtitle = tr("history off");
+            }
+            else
+            {
+                t.glyph = running ? QStringLiteral("▸") : QStringLiteral("~");
+                t.subtitle = program;
+                QString dir = impl->workingDirectory();
+                if (running && !dir.isEmpty())
+                    t.subtitle = QFileInfo(dir).fileName();
+            }
+        }
+        tabs << t;
+    }
+    return tabs;
+}
+
+void TabWidget::refreshMazeMarks()
+{
+    for (int i = 0; i < count(); ++i)
+    {
+        auto *holder = qobject_cast<TermWidgetHolder*>(widget(i));
+        if (!holder)
+            continue;
+        bool tor = false, incognito = false, root = false;
+        const auto terms = holder->findChildren<TermWidget*>();
+        for (TermWidget *t : terms)
+        {
+            tor = tor || t->impl()->mazeKind() == MazeKind::Tor;
+            incognito = incognito || t->impl()->mazeKind() == MazeKind::Incognito;
+            root = root || t->impl()->foregroundIsRoot();
+        }
+        QString tip;
+        QIcon icon;
+        QString mark;
+        if (root)
+        {
+            mark = tr("ROOT");
+            tip = tr("Running as root: a mistyped command here can change the whole system.");
+        }
+        else if (tor)
+        {
+            mark = tr("TOR");
+            tip = tr("Tor terminal: every command here reaches the internet only through Tor.");
+        }
+        else if (incognito)
+        {
+            mark = tr("PRIVATE");
+            tip = tr("Incognito terminal: no shell history is saved.");
+        }
+        // Badges are drawn once per kind; the cache key tells an unchanged
+        // tab apart without repainting it.
+        static QHash<QString, QIcon> badges;
+        if (!mark.isEmpty())
+        {
+            const QString key = mark + (root ? QStringLiteral("!") : QString());
+            if (!badges.contains(key))
+                badges.insert(key, Maze::badge(mark, root));
+            icon = badges.value(key);
+        }
+        if (tor && root)
+            tip += QLatin1Char('\n') + tr("Tor terminal: every command here reaches the internet only through Tor.");
+        // Keep the short title current (cd, a program starting or ending) for
+        // tabs the user has not renamed.
+        if (!holder->property(TAB_SYSTEM_TITLE_PROPERTY).isValid())
+        {
+            const QString title = mazeTitle(holder);
+            if (!title.isEmpty() && tabText(i) != title)
+            {
+                setTabText(i, title);
+                if (currentIndex() == i)
+                    emit currentTitleChanged(i);
+            }
+        }
+        const QString shellTitle = holder->property("maze_shell_title").toString();
+        if (!shellTitle.isEmpty())
+            tip = tip.isEmpty() ? shellTitle : shellTitle + QLatin1Char('\n') + tip;
+        if (tabIcon(i).cacheKey() != icon.cacheKey() || tabToolTip(i) != tip)
+        {
+            setTabIcon(i, icon);
+            setTabToolTip(i, tip);
+        }
+    }
+}
+
+TabWidget::~TabWidget()
+{
+    QObject::disconnect(mFocusConnection);
+}
+
+TermWidgetHolder * TabWidget::terminalHolder()
+{
+    return reinterpret_cast<TermWidgetHolder*>(widget(currentIndex()));
+}
+
+
+int TabWidget::addNewTab(TerminalConfig config)
+{
+    tabNumerator++;
+    QString label = QString(tr("Shell No. %1")).arg(tabNumerator);
+
+    TermWidgetHolder *ch = terminalHolder();
+    if (ch)
+        config.provideCurrentDirectory(ch->currentTerminal()->impl()->workingDirectory());
+
+    TermWidgetHolder *console = new TermWidgetHolder(config, this);
+    console->setWindowTitle(label);
+    connect(console, &TermWidgetHolder::finished, this, &TabWidget::removeFinished);
+    connect(console, &TermWidgetHolder::lastTerminalClosed, this, &TabWidget::removeFinished);
+    connect(console, &TermWidgetHolder::termTitleChanged, this, &TabWidget::onTermTitleChanged);
+    connect(this, &QTabWidget::currentChanged, this, &TabWidget::currentTitleChanged);
+
+    const int newIndex = (Properties::Instance()->m_openNewTabRightToActiveTab ? currentIndex() + 1 : count());
+    const int index = insertTab(newIndex, console, label);
+
+    console->setProperty(TAB_SYSTEM_TITLE_PROPERTY, QVariant()); // = no custom title
+    updateTabIndices();
+    switchTab(index);
+    console->setInitialFocus();
+
+    showHideTabBar();
+
+    return index;
+}
+
+void TabWidget::switchLeftSubterminal()
+{
+    terminalHolder()->directionalNavigation(NavigationDirection::Left);
+}
+
+void TabWidget::switchRightSubterminal()
+{
+    terminalHolder()->directionalNavigation(NavigationDirection::Right);
+}
+
+void TabWidget::switchTopSubterminal() {
+    terminalHolder()->directionalNavigation(NavigationDirection::Top);
+}
+
+void TabWidget::switchBottomSubterminal() {
+    terminalHolder()->directionalNavigation(NavigationDirection::Bottom);
+}
+
+void TabWidget::splitHorizontally()
+{
+    terminalHolder()->splitHorizontal(terminalHolder()->currentTerminal());
+    findParent<MainWindow>(this)->updateDisabledActions();
+}
+
+void TabWidget::splitVertically()
+{
+    terminalHolder()->splitVertical(terminalHolder()->currentTerminal());
+    findParent<MainWindow>(this)->updateDisabledActions();
+}
+
+void TabWidget::splitCollapse()
+{
+    auto win = findParent<MainWindow>(this);
+    if (Properties::Instance()->askOnExit)
+    {
+        if (auto impl = terminalHolder()->currentTerminal()->impl())
+        {
+            if (impl->hasCommand() || impl->getForegroundProcessId() != impl->getShellPID())
+            {
+                if (!win->closePrompt(tr("Close Subterminal"), tr("Are you sure you want to close this subterminal?")))
+                {
+                    return;
+                }
+            }
+        }
+    }
+
+    terminalHolder()->splitCollapse(terminalHolder()->currentTerminal());
+    win->updateDisabledActions();
+}
+
+void TabWidget::copySelection()
+{
+    terminalHolder()->currentTerminal()->impl()->copyClipboard();
+}
+
+void TabWidget::pasteClipboard()
+{
+    terminalHolder()->currentTerminal()->impl()->guardedPaste(false);
+}
+
+void TabWidget::pasteSelection()
+{
+    terminalHolder()->currentTerminal()->impl()->guardedPaste(true);
+}
+
+void TabWidget::zoomIn()
+{
+    terminalHolder()->currentTerminal()->impl()->zoomIn();
+}
+
+void TabWidget::zoomOut()
+{
+    terminalHolder()->currentTerminal()->impl()->zoomOut();
+}
+
+void TabWidget::zoomReset()
+{
+    terminalHolder()->currentTerminal()->impl()->zoomReset();
+}
+
+void TabWidget::updateTabIndices()
+{
+    for(int i = 0; i < count(); i++)
+        widget(i)->setProperty(TAB_INDEX_PROPERTY, i);
+}
+
+void TabWidget::onTermTitleChanged(const QString& title, const QString& icon)
+{
+    TermWidgetHolder * console = qobject_cast<TermWidgetHolder*>(sender());
+    /* Are we in the custom title mode ? */
+    if (console->property(TAB_SYSTEM_TITLE_PROPERTY).isValid())
+    {   /* Store the new system title to restore it when custom one will be stopped */
+        console->setProperty(TAB_SYSTEM_TITLE_PROPERTY, title);
+    }
+    else
+    {
+        const int index = console->property(TAB_INDEX_PROPERTY).toInt();
+
+        /* In xterm, the icon string maps to the X11 WM_ICON_NAME property.
+         * Doing nothing here for several reasons:
+         * 1. Few X11 window managers use that
+         * 2. X11-only code is involved
+         */
+        Q_UNUSED(icon);
+
+        // Maze: a short title (the folder, or the program running in it);
+        // the shell's own title, often "user@host: /long/path", is the tooltip.
+        console->setProperty("maze_shell_title", title);
+        setTabText(index, mazeTitle(console));
+        if (currentIndex() == index)
+            emit currentTitleChanged(index);
+    }
+}
+
+void TabWidget::renameSession(int index)
+{
+    bool ok = false;
+    QString previous_text = tabText(index);
+    QString text = QInputDialog::getText(this, tr("Tab name"),
+                                        tr("New tab name:"), QLineEdit::Normal,
+                                        previous_text, &ok).simplified();
+    if(ok)
+    {
+        const QVariant system_title = widget(index)->property(TAB_SYSTEM_TITLE_PROPERTY);
+        if (system_title.isValid()) /* Do we already have a custom title ? */
+        {
+            /* Stop custom title when text is empty or match the default system value */
+            if (text.isEmpty() || text==system_title.toString())
+            {
+                /* Restore the stored title */
+                setTabIcon(index, QIcon{});
+                setTabText(index, system_title.toString());
+                /* Reset the stored title memory */
+                widget(index)->setProperty(TAB_SYSTEM_TITLE_PROPERTY, QVariant());
+            }
+            else
+            {
+                /* Set the custom text */
+                setTabIcon(index, QIcon{});
+                setTabText(index, text);
+            }
+        }
+        else
+        {
+            /* Start custom title when text is no more the default value */
+            if (!text.isEmpty() && text!=previous_text)
+            {
+                /* Store the title before we set the first custom value */
+                widget(index)->setProperty(TAB_SYSTEM_TITLE_PROPERTY, previous_text);
+                /* Set the custom text */
+                setTabIcon(index, QIcon{});
+                setTabText(index, text);
+            }
+            /* else... no need to change the title */
+        }
+        if (currentIndex() == index)
+            emit currentTitleChanged(index);
+    }
+}
+
+void TabWidget::renameCurrentSession()
+{
+    renameSession(currentIndex());
+}
+
+void TabWidget::setTitleColor(int index)
+{
+    QColor current = tabBar()->tabTextColor(index);
+    QColor color = QColorDialog::getColor(current, this, tr("Select new tab title color"));
+
+    if (color.isValid())
+        tabBar()->setTabTextColor(index, color);
+}
+
+void TabWidget::renameTabsAfterRemove()
+{
+// it breaks custom names - it replaces original/custom title with shell no #
+#if 0
+    for(int i = 0; i < count(); i++) {
+        setTabText(i, QString(tr("Shell No. %1")).arg(i+1));
+    }
+#endif
+}
+
+void TabWidget::contextMenuEvent(QContextMenuEvent *event)
+{
+    int tabIndex = tabBar()->tabAt(tabBar()->mapFrom(this, event->pos()));
+    if (tabIndex == -1) {
+        tabIndex = currentIndex();
+    }
+    if (tabIndex == -1) {
+        return;
+    }
+
+    QMenu menu(this);
+    QMap< QString, QAction * > actions = findParent<MainWindow>(this)->leaseActions();
+
+    QAction *close = menu.addAction(QIcon::fromTheme(QStringLiteral("document-close")), tr("Close session"));
+    QAction *rename = menu.addAction(actions[QLatin1String(RENAME_SESSION)]->text());
+    QAction *changeColor = menu.addAction(QIcon::fromTheme(QStringLiteral("color-management")), tr("Change title color"));
+    rename->setShortcut(actions[QLatin1String(RENAME_SESSION)]->shortcut());
+    rename->blockSignals(true);
+
+    QAction *action = menu.exec(event->globalPos());
+    if (action == close) {
+        emit tabCloseRequested(tabIndex);
+    } else if (action == rename) {
+        emit tabRenameRequested(tabIndex);
+    } else if (action == changeColor) {
+        emit tabTitleColorChangeRequested(tabIndex);
+    }
+}
+
+bool TabWidget::eventFilter(QObject *obj, QEvent *event)
+{
+    QMouseEvent *e = reinterpret_cast<QMouseEvent*>(event);
+    if (e->button() == Qt::MiddleButton) {
+        if (event->type() == QEvent::MouseButtonRelease && Properties::Instance()->closeTabOnMiddleClick)
+        {
+            // close the tab on middle clicking
+            int index = tabBar()->tabAt(e->pos());
+            if (index > -1)
+            {
+                removeTab(index, true);
+                return true;
+            }
+        }
+    }
+    else if (event->type() == QEvent::MouseButtonDblClick)
+    {
+        // if user doubleclicks on tab button - rename it. If user
+        // clicks on free space - open new tab
+        int index = tabBar()->tabAt(e->pos());
+        if (index == -1)
+        {
+            if (Properties::Instance()->terminalsPreset == 3)
+            {
+                preset4Terminals();
+            }
+            else if (Properties::Instance()->terminalsPreset == 2)
+            {
+                preset2Vertical();
+            }
+            else if (Properties::Instance()->terminalsPreset == 1)
+            {
+                preset2Horizontal();
+            }
+            else
+            {
+                TerminalConfig defaultConfig;
+                addNewTab(defaultConfig);
+            }
+        }
+        else
+            renameSession(index);
+        return true;
+    }
+    return QTabWidget::eventFilter(obj, event);
+}
+
+void TabWidget::removeFinished()
+{
+    QObject* term = sender();
+    QVariant prop = term->property(TAB_INDEX_PROPERTY);
+    if(prop.isValid() && prop.canConvert<int>())
+    {
+        int index = prop.toInt();
+        removeTab(index);
+    }
+}
+
+void TabWidget::removeTab(int index, bool prompt)
+{
+    if (count() > 1)
+    {
+        if (prompt && Properties::Instance()->askOnExit)
+        {
+            if (TermWidgetHolder* term = reinterpret_cast<TermWidgetHolder*>(widget(index)))
+            {
+                if (term->hasRunningProcess())
+                {
+                    if (!findParent<MainWindow>(this)->closePrompt(tr("Close tab"), tr("Are you sure you want to close this tab?")))
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+
+        setUpdatesEnabled(false);
+
+        QWidget * w = widget(index);
+        mHistory.removeAll(w);
+        QTabWidget::removeTab(index);
+        w->deleteLater();
+
+        updateTabIndices();
+        int current = currentIndex();
+        if (current >= 0 )
+        {
+            qobject_cast<TermWidgetHolder*>(widget(current))->setInitialFocus();
+        }
+    // do not decrease it as renaming is disabled in renameTabsAfterRemove
+    //    tabNumerator--;
+        setUpdatesEnabled(true);
+    } else {
+        emit closeLastTabNotification();
+    }
+
+    renameTabsAfterRemove();
+    showHideTabBar();
+}
+
+void TabWidget::switchTab(int index)
+{
+    setCurrentIndex(index);
+}
+
+void TabWidget::onAction()
+{
+    QObject *action = sender();
+    Q_ASSERT(action);
+    switchTab(action->property("tab").toInt() - 1);
+}
+
+void TabWidget::onCurrentChanged(int index)
+{
+    // update disabled actions, but only after probable subterminals are added
+    QTimer::singleShot(0, this, [this] {
+        findParent<MainWindow>(this)->updateDisabledActions();
+    });
+    // also, update history
+    auto* w = widget(index);
+    mHistory.removeAll(w);
+    mHistory.prepend(w);
+}
+
+const QList<QWidget*>& TabWidget::history() const
+{
+    return mHistory;
+}
+
+void TabWidget::removeCurrentTab()
+{
+    if (count() > 1) {
+        removeTab(currentIndex(), true);
+    } else {
+        emit closeLastTabNotification();
+    }
+}
+
+int TabWidget::switchToRight()
+{
+    switchTab((currentIndex() + 1) % count());
+    return currentIndex();
+}
+
+int TabWidget::switchToLeft()
+{
+    switchTab(currentIndex() ? currentIndex() - 1 : count() - 1);
+    return currentIndex();
+}
+
+void TabWidget::switchToNext()
+{
+    mSwitcher->selectItem(false);
+}
+
+void TabWidget::switchToPrev()
+{
+    mSwitcher->selectItem(true);
+}
+
+
+void TabWidget::move(Direction dir)
+{
+    if(count() > 1)
+    {
+        int index = currentIndex();
+        QWidget* child  = widget(index);
+        QString label   = tabText(index);
+        QString toolTip = tabToolTip(index);
+        QIcon   icon    = tabIcon(index);
+
+        int newIndex = 0;
+        if(dir == Left)
+            if(index == 0)
+                newIndex = count() -1;
+            else
+                newIndex = index - 1;
+        else
+            if(index == count() - 1)
+                newIndex = 0;
+            else
+                newIndex = index + 1;
+
+        setUpdatesEnabled(false);
+        QTabWidget::removeTab(index);
+        newIndex = insertTab(newIndex, child, label);
+        setTabToolTip(newIndex, toolTip);
+        setTabIcon(newIndex, icon);
+        setUpdatesEnabled(true);
+        switchTab(newIndex);
+        child->setFocus();
+        updateTabIndices();
+    }
+}
+
+void TabWidget::moveLeft()
+{
+    move(Left);
+}
+
+void TabWidget::moveRight()
+{
+    move(Right);
+}
+
+void TabWidget::changeScrollPosition(QAction *triggered)
+{
+    QActionGroup *scrollPosition = static_cast<QActionGroup *>(sender());
+    if(!scrollPosition)
+        qFatal("scrollPosition is NULL");
+
+    Properties::Instance()->scrollBarPos =
+            scrollPosition->actions().indexOf(triggered);
+
+    Properties::Instance()->saveSettings();
+    propertiesChanged();
+
+}
+
+void TabWidget::changeTabPosition(QAction *triggered)
+{
+    QActionGroup *tabPosition = static_cast<QActionGroup *>(sender());
+    if(!tabPosition)
+        qFatal("tabPosition is NULL");
+
+    Properties *prop = Properties::Instance();
+    /* order is dictated from mainwindow.cpp */
+    QTabWidget::TabPosition position = (QTabWidget::TabPosition)tabPosition->actions().indexOf(triggered);
+    setTabPosition(position);
+    prop->tabsPos = position;
+    prop->saveSettings();
+}
+
+void TabWidget::changeKeyboardCursorShape(QAction *triggered)
+{
+    QActionGroup *keyboardCursorShape = static_cast<QActionGroup *>(sender());
+    if(!keyboardCursorShape)
+        qFatal("keyboardCursorShape is NULL");
+
+    Properties::Instance()->keyboardCursorShape =
+            keyboardCursorShape->actions().indexOf(triggered);
+
+    Properties::Instance()->saveSettings();
+    propertiesChanged();
+}
+
+void TabWidget::propertiesChanged()
+{
+    for (int i = 0; i < count(); ++i)
+    {
+        TermWidgetHolder *console = static_cast<TermWidgetHolder*>(widget(i));
+        console->propertiesChanged();
+    }
+    showHideTabBar();
+
+    setTabsClosable(Properties::Instance()->showCloseTabButton);
+
+    // Update the tab widths
+    mTabBar->setFixedWidth(Properties::Instance()->fixedTabWidth);
+    mTabBar->setFixedWidthValue(Properties::Instance()->fixedTabWidthValue);
+    mTabBar->updateWidth();
+}
+
+void TabWidget::clearActiveTerminal()
+{
+    reinterpret_cast<TermWidgetHolder*>(widget(currentIndex()))->clearActiveTerminal();
+}
+
+void TabWidget::saveSession()
+{
+    int ix = currentIndex();
+    reinterpret_cast<TermWidgetHolder*>(widget(ix))->saveSession(tabText(ix));
+}
+
+void TabWidget::loadSession()
+{
+    reinterpret_cast<TermWidgetHolder*>(widget(currentIndex()))->loadSession();
+}
+
+void TabWidget::preset2Horizontal()
+{
+    TerminalConfig defaultConfig;
+    int ix = TabWidget::addNewTab(defaultConfig);
+    TermWidgetHolder* term = reinterpret_cast<TermWidgetHolder*>(widget(ix));
+
+    // NOTE: When splitting happens, the focus changes. Therefore, we should switch to
+    // the 1st terminal only when the window is activated and the focus has really changed.
+    QObject::disconnect(mFocusConnection);
+    mFocusConnection = connect(term, &TermWidgetHolder::termFocusChanged, this, [this, term] {
+        QObject::disconnect(mFocusConnection);
+        term->directionalNavigation(NavigationDirection::Top);
+    });
+
+    term->splitHorizontal(term->currentTerminal());
+}
+
+void TabWidget::preset2Vertical()
+{
+    TerminalConfig defaultConfig;
+    int ix = TabWidget::addNewTab(defaultConfig);
+    TermWidgetHolder* term = reinterpret_cast<TermWidgetHolder*>(widget(ix));
+
+    // see preset2Horizontal() for an explanation
+    QObject::disconnect(mFocusConnection);
+    mFocusConnection = connect(term, &TermWidgetHolder::termFocusChanged, this, [this, term] {
+        QObject::disconnect(mFocusConnection);
+        term->directionalNavigation(NavigationDirection::Left);
+    });
+
+    term->splitVertical(term->currentTerminal());
+}
+
+void TabWidget::preset4Terminals()
+{
+    TerminalConfig defaultConfig;
+    int ix = TabWidget::addNewTab(defaultConfig);
+    TermWidgetHolder* term = reinterpret_cast<TermWidgetHolder*>(widget(ix));
+
+    // see preset2Horizontal() for an explanation
+    // Waiting for the first focus change is enough because, after it happens,
+    // the window is active and the other events happen serially.
+    QObject::disconnect(mFocusConnection);
+    mFocusConnection = connect(term, &TermWidgetHolder::termFocusChanged, this, [this, term] {
+        QObject::disconnect(mFocusConnection);
+        term->splitHorizontal(term->currentTerminal());
+        term->directionalNavigation(NavigationDirection::Left);
+        term->splitHorizontal(term->currentTerminal());
+        // switch to the 1st terminal (the focus is already changed)
+        term->directionalNavigation(NavigationDirection::Top);
+    });
+
+    term->splitVertical(term->currentTerminal());
+}
+
+void TabWidget::showHideTabBar()
+{
+    if (property("mazeHeader").toBool())
+        tabBar()->setVisible(false); // Maze: the window draws the tabs (Maze::Chrome)
+    else if (Properties::Instance()->tabBarless)
+        tabBar()->setVisible(false);
+    else
+        tabBar()->setVisible(!Properties::Instance()->hideTabBarWithOneTab || count() > 1);
+}
+
+bool TabWidget::hasRunningProcess() const
+{
+    for (int i = 0; i < count(); i++)
+    {
+        if (TermWidgetHolder* term = reinterpret_cast<TermWidgetHolder*>(widget(i)))
+        {
+            if (term->hasRunningProcess())
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}

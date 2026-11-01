@@ -1,0 +1,145 @@
+/***************************************************************************
+ *   Copyright (C) 2006 by Vladimir Kuznetsov                              *
+ *   vovanec@gmail.com                                                     *
+ *                                                                         *
+ *   This program is free software; you can redistribute it and/or modify  *
+ *   it under the terms of the GNU General Public License as published by  *
+ *   the Free Software Foundation; either version 2 of the License, or     *
+ *   (at your option) any later version.                                   *
+ *                                                                         *
+ *   This program is distributed in the hope that it will be useful,       *
+ *   but WITHOUT ANY WARRANTY; without even the implied warranty of        *
+ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
+ *   GNU General Public License for more details.                          *
+ *                                                                         *
+ *   You should have received a copy of the GNU General Public License     *
+ *   along with this program.  If not, see <http://www.gnu.org/licenses/>. *
+ ***************************************************************************/
+
+#ifndef MAINWINDOW_H
+#define MAINWINDOW_H
+
+#include "ui_qterminal.h"
+
+#include <QMainWindow>
+#include <QAction>
+
+#include "qxtglobalshortcut.h"
+#include "terminalconfig.h"
+#include "dbusaddressable.h"
+
+namespace LayerShellQt {
+    class Window;
+}
+
+class QToolButton;
+class QLabel;
+
+#include "maze/chrome.h"
+
+class MainWindow : public QMainWindow, private Ui::mainWindow, public DBusAddressable
+{
+    Q_OBJECT
+
+public:
+    MainWindow(TerminalConfig& cfg,
+               bool dropMode,
+               QWidget * parent = nullptr, Qt::WindowFlags f = Qt::WindowFlags());
+    ~MainWindow() override;
+
+    bool dropMode() { return m_dropMode; }
+    QMap<QString, QAction*> & leaseActions();
+
+    void rebuildActions();
+
+    bool closePrompt(const QString &title, const QString &text);
+
+    #ifdef HAVE_QDBUS
+    QDBusObjectPath getActiveTab();
+    QList<QDBusObjectPath> getTabs();
+    QDBusObjectPath newTab(const QHash<QString,QVariant> &termArgs);
+    void closeWindow();
+    #endif
+
+protected:
+     bool event(QEvent* event) override;
+     void showEvent(QShowEvent* event) override;
+
+private:
+    QActionGroup *tabPosition, *scrollBarPosition, *keyboardCursorShape;
+    QMenu *tabPosMenu, *scrollPosMenu, *keyboardCursorShapeMenu;
+
+    // A parent object for QObjects that are created dynamically based on settings
+    // Used to simplify the setting cleanup on reconfiguration: deleting settingOwner frees all related QObjects
+    QObject *settingOwner;
+
+    QMenu *presetsMenu;
+    TerminalConfig m_config;
+
+    QDockWidget *m_bookmarksDock;
+
+    void setup_Action(const char *name, QAction *action, const char *defaultShortcut, const QObject *receiver,
+                      const char *slot, QMenu *menu = nullptr, const QVariant &data = QVariant());
+    QMap< QString, QAction * > actions;
+
+    QStringList menubarOrigTexts;
+
+    void setup_FileMenu_Actions();
+    void setup_ActionsMenu_Actions();
+    void setup_ViewMenu_Actions();
+    void setup_ContextMenu_Actions();
+    void setupCustomDirs();
+
+    void closeEvent(QCloseEvent*) override;
+
+    // Maze: the header (tab row with window buttons) and the status strip.
+    Maze::Chrome *m_chrome = nullptr;
+    void setupMazeChrome();
+    Maze::StatusInfo mazeStatus();
+
+    void enableDropMode();
+    QToolButton *m_dropLockButton;
+    bool m_dropMode;
+    LayerShellQt::Window *m_layerWindow;
+    QxtGlobalShortcut m_dropShortcut;
+    void realign();
+    void setDropShortcut(const QKeySequence& dropShortCut);
+    void setDropLockShortCut(const QKeySequence& dropLockShortCut);
+
+    bool hasMultipleTabs(QAction *);
+    bool hasMultipleSubterminals(QAction *);
+    bool hasIndexedTab(QAction *action);
+
+public slots:
+    void showHide();
+    void updateDisabledActions();
+
+private slots:
+    void on_consoleTabulator_currentChanged(int);
+    void propertiesChanged();
+    void actAbout_triggered();
+    void actProperties_triggered();
+    void updateActionGroup(QAction *);
+    void toggleBookmarks();
+    void toggleBorderless();
+    void toggleTabBar();
+    void toggleMenu();
+    void toggleMazeSideTabs();
+    void toggleMazeGlass();
+
+    void showFullscreen(bool fullscreen);
+    void setKeepOpen(bool value);
+    void find();
+
+    void newTerminalWindow();
+    void bookmarksWidget_callCommand(const QString&);
+    void bookmarksDock_visibilityChanged(bool visible);
+
+    void addNewTab(TerminalConfig cfg = TerminalConfig());
+    void addTorTab();
+    void addIncognitoTab();
+    void onCurrentTitleChanged(int index);
+
+    void handleHistory();
+};
+#endif //MAINWINDOW_H

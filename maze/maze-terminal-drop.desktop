@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Maze Terminal (drop-down)
+Name[tr]=Maze Terminal (açılır)
+GenericName=Drop-down Terminal
+GenericName[tr]=Açılır Uçbirim
+Comment=A terminal that drops down from the top of the screen
+Comment[tr]=Ekranın üstünden aşağı inen uçbirim
+Icon=maze-terminal
+Exec=maze-terminal --drop
+Terminal=false
+Categories=Qt;System;TerminalEmulator;
+StartupWMClass=maze-terminal

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Maze Terminal</title>
+  <!-- Maze Terminal: the prompt as a folded ribbon — a lit upper face and a
+       shaded lower one — and the cursor. Black and white, lit from the
+       centre like the other Maze apps. -->
+  <defs>
+    <radialGradient id="mt-glow" cx="512" cy="512" r="380" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.20"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mt-lit" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d4d4da"/>
+    </linearGradient>
+    <linearGradient id="mt-shade" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8e8e96"/>
+      <stop offset="1" stop-color="#4a4a50"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="220" fill="#000"/>
+  <circle cx="512" cy="512" r="380" fill="url(#mt-glow)"/>
+  <path d="M290 290 H400 L622 512 H512 Z" fill="url(#mt-lit)"/>
+  <path d="M512 512 H622 L400 734 H290 Z" fill="url(#mt-shade)"/>
+  <rect x="650" y="680" width="120" height="54" fill="#f2f2f4"/>
+</svg>

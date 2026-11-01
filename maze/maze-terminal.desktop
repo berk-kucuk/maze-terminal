@@ -1,0 +1,32 @@
+[Desktop Entry]
+Type=Application
+Name=Maze Terminal
+GenericName=Terminal
+GenericName[tr]=Uçbirim
+Comment=Terminal with a paste guard, Tor tabs and incognito tabs
+Comment[tr]=Yapıştırma korumalı, Tor ve gizli sekmeli uçbirim
+Icon=maze-terminal
+Exec=maze-terminal
+Terminal=false
+Categories=Qt;System;TerminalEmulator;
+Keywords=terminal;shell;console;command;prompt;tor;uçbirim;konsol;kabuk;
+StartupWMClass=maze-terminal
+Actions=NewTorTab;NewIncognitoTab;Dropdown;
+
+[Desktop Action NewTorTab]
+Name=New Tor tab
+Name[tr]=Yeni Tor sekmesi
+Exec=maze-terminal --tor
+Icon=maze-terminal
+
+[Desktop Action NewIncognitoTab]
+Name=New incognito tab
+Name[tr]=Yeni gizli sekme
+Exec=maze-terminal --incognito
+Icon=maze-terminal
+
+[Desktop Action Dropdown]
+Name=Drop-down terminal
+Name[tr]=Açılır uçbirim
+Exec=maze-terminal --drop
+Icon=maze-terminal

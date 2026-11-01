@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>maze-terminal</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0-or-later</project_license>
+  <name>Maze Terminal</name>
+  <summary>Terminal with a paste guard, Tor tabs and incognito tabs</summary>
+  <description>
+    <p>The Maze Linux terminal, based on QTerminal. It checks what you paste
+    before the shell sees it, opens tabs whose every command goes through Tor,
+    opens tabs that keep no history, and marks a tab running as root.</p>
+  </description>
+  <launchable type="desktop-id">maze-terminal.desktop</launchable>
+  <url type="homepage">https://mazelinux.berkkucukk.com.tr</url>
+  <developer id="tr.com.berkkucukk"><name>Berk Küçük</name></developer>
+  <provides><binary>maze-terminal</binary></provides>
+</component>

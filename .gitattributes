@@ -1,0 +1,6 @@
+# Left out of `git archive` tarballs.
+.gitattributes      export-ignore
+.gitignore          export-ignore
+/build              export-ignore
+/dist-pkg           export-ignore
+/screenshots        export-ignore

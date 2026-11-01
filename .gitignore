@@ -1,0 +1,19 @@
+# Build output
+/build/
+/build-*/
+/dist-pkg/
+*.pkg.tar.zst
+*.pkg.tar.zst.sig
+
+# Editors and tools
+*.pro.user*
+CMakeLists.txt.user
+CMakeUserPresets.json
+compile_commands.json
+.cache/
+.vscode/
+.idea/
+*.kdev4
+.kdev4/
+*~
+*.swp

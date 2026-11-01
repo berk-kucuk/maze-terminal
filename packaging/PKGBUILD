@@ -1,0 +1,50 @@
+# Maintainer: berkkucukk <berkkucukk@proton.me>
+#
+# LOCAL-BUILD PKGBUILD — see ../build-pkg.sh, which writes `pkgver` and drops
+# `maze-terminal-$pkgver.tar.gz` next to this file before invoking makepkg.
+#
+# Maze Terminal is a fork of QTerminal 2.4.0 (LXQt). It installs as its own
+# binary, data dir and config dir (~/.config/maze-terminal), so it lives next
+# to qterminal or konsole without touching either. QTermWidget 2.4.0 is
+# bundled (3rdparty/qtermwidget, LGPL) and patched — block characters are
+# drawn as filled cells like Konsole — so the qtermwidget package is not used.
+
+pkgname=maze-terminal
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Maze Terminal — terminal emulator with a paste guard, Tor tabs and incognito tabs (QTerminal fork)"
+arch=('x86_64')
+url="https://mazelinux.berkkucukk.com.tr"
+license=('GPL-2.0-or-later' 'LGPL-2.0-or-later')
+depends=(
+    'qt6-base'
+    'qt6-svg'          # drawn icons in the window frame
+    'kwindowsystem'    # the glass frame's blur (KDE Frameworks)
+    'layer-shell-qt'   # drop-down mode on Wayland
+    'libcanberra'      # the bell
+    'ttf-hack'         # default font
+    'hicolor-icon-theme'
+)
+makedepends=('cmake' 'qt6-tools')
+optdepends=(
+    'entropy-shield: Tor tabs (Ctrl+Shift+O) run through entropy-shield-run'
+)
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cmake -B build -S "$pkgname-$pkgver" \
+        -DCMAKE_INSTALL_PREFIX=/usr \
+        -DCMAKE_BUILD_TYPE=None \
+        -DBUILD_TESTS=ON
+    cmake --build build
+}
+
+check() {
+    QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
+}
+
+package() {
+    DESTDIR="$pkgdir" cmake --install build
+    install -Dm644 "$pkgname-$pkgver/README.md" "$pkgdir/usr/share/doc/$pkgname/README.md"
+}
