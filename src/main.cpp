@@ -158,6 +158,11 @@ int main(int argc, char *argv[])
     QStringList shell_command;
     bool dropMode = false;
     parse_args(argc, argv, workdir, shell_command, dropMode);
+    // Maze: the drop-down terminal is its own app to the desktop (its own
+    // Wayland app id and .desktop file), so a normal Maze Terminal window is
+    // never shown in the dock with the drop-down's entry, or the other way round.
+    if (dropMode)
+        QGuiApplication::setDesktopFileName(QLatin1String("maze-terminal-drop"));
 
     #ifdef HAVE_QDBUS
         app->registerOnDbus(dropMode);

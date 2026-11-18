@@ -30,3 +30,10 @@ add_executable(maze_pasteguard_test
 set_target_properties(maze_pasteguard_test PROPERTIES AUTOMOC ON)
 target_link_libraries(maze_pasteguard_test ${QT_TEST_LIB} Qt6::Core)
 add_test(NAME maze_pasteguard_test COMMAND maze_pasteguard_test)
+
+# Maze Terminal: dragging a selection into the history (both directions).
+add_executable(maze_selection_test maze_selection_test.cpp)
+set_target_properties(maze_selection_test PROPERTIES AUTOMOC ON)
+target_link_libraries(maze_selection_test ${QT_TEST_LIB} mazetermwidget)
+add_test(NAME maze_selection_test COMMAND maze_selection_test)
+set_tests_properties(maze_selection_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

@@ -23,6 +23,7 @@
 
 #include <QMainWindow>
 #include <QAction>
+#include <QElapsedTimer>
 
 #include "qxtglobalshortcut.h"
 #include "terminalconfig.h"
@@ -100,6 +101,8 @@ private:
     void enableDropMode();
     QToolButton *m_dropLockButton;
     bool m_dropMode;
+    QElapsedTimer m_dropAutoHidden;  // when the drop-down last hid itself on losing focus
+    void slideFromTop();
     LayerShellQt::Window *m_layerWindow;
     QxtGlobalShortcut m_dropShortcut;
     void realign();

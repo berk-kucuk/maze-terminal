@@ -46,6 +46,10 @@
 #include "termwidget.h"
 #include "maze/chrome.h"
 
+#ifdef HAVE_KWINDOWSYSTEM
+#include <KWindowEffects>
+#endif
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -137,8 +141,7 @@ MainWindow::MainWindow(TerminalConfig &cfg,
     }
 
     consoleTabulator->setAutoFillBackground(true);
-    if (!m_dropMode)
-        setupMazeChrome();
+    setupMazeChrome();
     connect(consoleTabulator, &TabWidget::closeLastTabNotification, this, &MainWindow::close);
     consoleTabulator->setTabPosition((QTabWidget::TabPosition)Properties::Instance()->tabsPos);
     //consoleTabulator->setShellProgram(command);
@@ -200,12 +203,14 @@ void MainWindow::enableDropMode()
             }
         }
     }
+    slideFromTop();
 
     setWindowFlags(Qt::Dialog | Qt::WindowStaysOnTopHint | Qt::CustomizeWindowHint);
 
     m_dropLockButton = new QToolButton(this);
+    m_dropLockButton->setObjectName(QStringLiteral("MazeLockButton"));
     m_dropLockButton->setToolTip(tr("Keep window open when it loses focus"));
-    consoleTabulator->setCornerWidget(m_dropLockButton, Qt::BottomRightCorner);
+    // Maze: the lock goes into the Maze header (Chrome::setDropDown).
     m_dropLockButton->setCheckable(true);
     m_dropLockButton->connect(m_dropLockButton, &QToolButton::clicked, this, &MainWindow::setKeepOpen);
     setKeepOpen(Properties::Instance()->dropKeepOpen);
@@ -651,6 +656,8 @@ void MainWindow::setupMazeChrome()
                                 {menu_File, menu_Edit, menu_Actions, menu_Window, menu_Help},
                                 std::move(hooks));
     statusBar()->hide();
+    if (m_dropMode)
+        m_chrome->setDropDown(m_dropLockButton);
 }
 
 // The git branch of a folder, read from .git/HEAD without running git.
@@ -963,6 +970,14 @@ void MainWindow::showHide()
     {
         hide();
     }
+    else if (m_dropAutoHidden.isValid() && m_dropAutoHidden.elapsed() < 1500)
+    {
+        // Maze: F12 starts a second maze-terminal --drop that asks this one to
+        // toggle. Starting it takes the focus away first, and a drop-down that
+        // loses the focus hides itself — so by the time the request arrives,
+        // the terminal the user wanted to close is already hidden. Leave it so.
+        m_dropAutoHidden.invalidate();
+    }
     else
     {
         // The checked state of the fullscreen action should be reset; otherwise, its shortcut
@@ -973,9 +988,21 @@ void MainWindow::showHide()
             a->setChecked(false);
         }
         realign();
+        slideFromTop();
         show();
         activateWindow();
     }
+}
+
+// Maze: the drop-down slides in from the top edge and back up (KWin's sliding
+// popups effect, as for Yakuake) instead of fading.
+void MainWindow::slideFromTop()
+{
+#ifdef HAVE_KWINDOWSYSTEM
+    winId();
+    if (QWindow *win = windowHandle())
+        KWindowEffects::slideWindow(win, KWindowEffects::TopEdge);
+#endif
 }
 
 void MainWindow::setKeepOpen(bool value)
@@ -1037,6 +1064,7 @@ bool MainWindow::event(QEvent *event)
             if (!m_layerWindow || m_layerWindow->layer() == LayerShellQt::Window::Layer::LayerOverlay)
             {
                 hide();
+                m_dropAutoHidden.start();
             }
         }
     }

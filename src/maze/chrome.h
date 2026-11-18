@@ -151,6 +151,9 @@ public:
     void setLayoutStyle(Layout layout);
     void setGlass(bool glass);
     void setFrameless(bool frameless);
+    // The drop-down terminal: the same layout as a window, without the
+    // footer and window buttons, and with its "keep open" lock in the header.
+    void setDropDown(QWidget *lockButton);
 
 public slots:
     void refresh();
@@ -177,6 +180,12 @@ private:
     QWidget *m_root;
     QBoxLayout *m_rootLayout;
     QBoxLayout *m_cardRowLayout;
+    QBoxLayout *m_topHeaderLayout = nullptr;
+    QWidget *m_topMenuButton = nullptr;
+    QBoxLayout *m_sideTopLayout = nullptr;
+    QWidget *m_sideMenuButton = nullptr;
+    QWidget *m_lockButton = nullptr;
+    bool m_dropDown = false;
     QWidget *m_card;
     QWidget *m_side;
     // Top layout (B)

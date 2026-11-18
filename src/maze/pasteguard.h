@@ -37,6 +37,12 @@ class PasteGuard {
 public:
     static PasteVerdict inspect(const QString &text);
 
+    // inspect(), plus what the terminal knows: when the text will NOT arrive
+    // bracketed (the program did not ask for bracketed paste, it is turned
+    // off, or it is a drop), a text of several lines runs line by line the
+    // moment it lands — so it is never pasted without a look.
+    static PasteVerdict inspect(const QString &text, bool bracketed);
+
     // The text with every character that is not what it looks like made
     // visible: ␛ for ESC, ⟦U+200B⟧ for invisible ones, ⏎ before line breaks.
     static QString reveal(const QString &text);

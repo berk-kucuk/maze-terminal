@@ -11,9 +11,9 @@
 
 pkgname=maze-terminal
 pkgver=1.0.0
-pkgrel=1
+pkgrel=3
 pkgdesc="Maze Terminal — terminal emulator with a paste guard, Tor tabs and incognito tabs (QTerminal fork)"
-arch=('x86_64')
+arch=('x86_64' 'aarch64')
 url="https://mazelinux.berkkucukk.com.tr"
 license=('GPL-2.0-or-later' 'LGPL-2.0-or-later')
 depends=(

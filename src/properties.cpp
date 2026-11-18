@@ -90,7 +90,7 @@ QFont Properties::defaultFont()
 // Maze: bumped when the window layout changes, so settings saved by an older
 // Maze Terminal get the new window defaults once instead of keeping, say, a
 // fixed tab width the new header no longer suits.
-static const int kMazeUiVersion = 3;
+static const int kMazeUiVersion = 4;
 
 void Properties::loadSettings()
 {
@@ -103,7 +103,11 @@ void Properties::loadSettings()
                                     "fontFamily", "fontSize", "font"})
                 m_settings->remove(QLatin1String(key));
         // 3: tabs on the side became the default layout.
-        m_settings->remove(QLatin1String("MazeLayout"));
+        if (from < 3)
+            m_settings->remove(QLatin1String("MazeLayout"));
+        // 4: a shorter drop-down by default.
+        if (from < 4)
+            m_settings->remove(QLatin1String("DropMode/Height"));
         m_settings->setValue(QLatin1String("MazeUiVersion"), kMazeUiVersion);
     }
 
@@ -211,7 +215,7 @@ void Properties::loadSettings()
     dropKeepOpen = m_settings->value(QLatin1String("KeepOpen"), false).toBool();
     dropShowOnStart = m_settings->value(QLatin1String("ShowOnStart"), true).toBool();
     dropWidth = qBound(25, m_settings->value(QLatin1String("Width"), 70).toInt(), 100);
-    dropHeight = qBound(25, m_settings->value(QLatin1String("Height"), 45).toInt(), 100);
+    dropHeight = qBound(25, m_settings->value(QLatin1String("Height"), 38).toInt(), 100);
     m_settings->endGroup();
 
     changeWindowTitle = m_settings->value(QLatin1String("ChangeWindowTitle"), true).toBool();

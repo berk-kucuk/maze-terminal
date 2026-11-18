@@ -10,4 +10,8 @@ Icon=maze-terminal
 Exec=maze-terminal --drop
 Terminal=false
 Categories=Qt;System;TerminalEmulator;
-StartupWMClass=maze-terminal
+StartupWMClass=maze-terminal-drop
+# F12 starts a new maze-terminal --drop each time; the second one only asks the
+# running drop-down to close and opens no window, so launch feedback (the
+# bouncing icon by the cursor) would wait for a window that never comes.
+StartupNotify=false

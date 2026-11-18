@@ -11,7 +11,7 @@ include(GNUInstallDirs)
 # qterminal version
 set(QTERMINAL_VERSION "2.4.0")
 # Maze Terminal's own version; QTERMINAL_VERSION stays the upstream base.
-set(MAZE_TERMINAL_VERSION "1.1.0")
+set(MAZE_TERMINAL_VERSION "1.1.1")
 
 option(UPDATE_TRANSLATIONS "Update source translation translations/*.ts files" OFF)
 option(BUILD_TESTS "Builds tests" ON)

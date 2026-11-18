@@ -65,6 +65,20 @@ private Q_SLOTS:
         }
     }
 
+    void several_lines_unbracketed_is_caution()
+    {
+        // TM2: without bracketed paste every line runs as it arrives.
+        const QString two = QStringLiteral("cd /tmp\nls");
+        QCOMPARE(PasteGuard::inspect(two, true).level, PasteVerdict::Clean);
+        const PasteVerdict v = PasteGuard::inspect(two, false);
+        QCOMPARE(v.level, PasteVerdict::Caution);
+        QVERIFY(v.reasons.last().contains(QStringLiteral("2 lines")));
+        // One line, even with its trailing newline, stays fast.
+        QCOMPARE(PasteGuard::inspect(QStringLiteral("ls -la\n"), false).level, PasteVerdict::Clean);
+        // Never lowers what inspect() found.
+        QCOMPARE(PasteGuard::inspect(QStringLiteral("a\n\x1b[201~b"), false).level, PasteVerdict::Danger);
+    }
+
     void root_and_wipes_are_caution()
     {
         QCOMPARE(PasteGuard::inspect(QStringLiteral("sudo pacman -Syu")).level, PasteVerdict::Caution);

@@ -124,7 +124,7 @@ void TermWidgetImpl::guardedPaste(bool selection)
         paste();
         return;
     }
-    const Maze::PasteVerdict verdict = Maze::PasteGuard::inspect(text);
+    const Maze::PasteVerdict verdict = verdictFor(text, bracketedPasteActive());
     if (verdict.level == Maze::PasteVerdict::Clean)
     {
         paste();
@@ -147,13 +147,19 @@ void TermWidgetImpl::guardedPaste(bool selection)
     setFocus();
 }
 
+Maze::PasteVerdict TermWidgetImpl::verdictFor(const QString &text, bool bracketed) const
+{
+    return Maze::PasteGuard::inspect(text, bracketed);
+}
+
 bool TermWidgetImpl::guardedDrop(const QString &text)
 {
     // Returns true when the drop was handled here (and must not reach the
     // library, which would send the text unbracketed).
     if (!Properties::Instance()->mazePasteGuard || text.isEmpty())
         return false;
-    const Maze::PasteVerdict verdict = Maze::PasteGuard::inspect(text);
+    // A drop is sent unbracketed whatever the program asked for (see below).
+    const Maze::PasteVerdict verdict = verdictFor(text, false);
     if (verdict.level == Maze::PasteVerdict::Clean)
         return false;
     switch (Maze::PasteDialog::ask(text, verdict, window()))
@@ -497,9 +503,29 @@ void TermWidget::closeTerminal()
 
 void TermWidget::sendText(const QString& text)
 {
-    if (impl())
+    // Reached only over D-Bus (org.lxqt.QTerminal.Terminal.sendText): another
+    // program typing into this terminal. It used to go straight in, past
+    // PasteGuard — and typed into a terminal where sudo was just used, a
+    // command runs as root without a password (sudo's grace period belongs
+    // to the terminal, not to the program). So it is always shown first,
+    // whatever the paste-guard setting.
+    if (!impl() || text.isEmpty())
+        return;
+    Maze::PasteVerdict verdict = impl()->verdictFor(text, false);
+    if (verdict.level < Maze::PasteVerdict::Caution)
+        verdict.level = Maze::PasteVerdict::Caution;
+    verdict.reasons.prepend(tr("Another program is asking to type this into the terminal "
+                               "(over D-Bus). Allow it only if you started that yourself."));
+    switch (Maze::PasteDialog::ask(text, verdict, window()))
     {
+    case Maze::PasteDialog::AsIs:
         impl()->sendText(text);
+        break;
+    case Maze::PasteDialog::Cleaned:
+        impl()->sendText(Maze::PasteGuard::clean(text));
+        break;
+    case Maze::PasteDialog::Cancel:
+        break;
     }
 }
 

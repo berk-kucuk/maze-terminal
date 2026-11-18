@@ -104,6 +104,17 @@ PasteVerdict PasteGuard::inspect(const QString &text)
     return v;
 }
 
+PasteVerdict PasteGuard::inspect(const QString &text, bool bracketed)
+{
+    PasteVerdict v = inspect(text);
+    if (!bracketed && v.lines > 1 && v.level < PasteVerdict::Caution) {
+        v.level = PasteVerdict::Caution;
+        v.reasons << tr("It is %1 lines long, and here every line runs the moment it arrives: "
+                        "the program in this terminal is not using bracketed paste.").arg(v.lines);
+    }
+    return v;
+}
+
 QString PasteGuard::reveal(const QString &text)
 {
     QString normalized = text;

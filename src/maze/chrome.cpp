@@ -102,6 +102,11 @@ QLabel#MazeChipMode {
 #consoleTabulator QTabBar::close-button:hover { image: url(:/maze/close-hover.svg); }
 #consoleTabulator QToolButton { background: transparent; border: none; }
 
+/* The drop-down's "keep open" lock, in the header. */
+QToolButton#MazeLockButton { background: transparent; border: none; border-radius: 9px; }
+QToolButton#MazeLockButton:hover { background: rgba(255, 255, 255, 0.08); }
+QToolButton#MazeLockButton:checked { background: rgba(255, 255, 255, 0.12); }
+
 /* A: side panel. */
 #MazeSide { border-right: 1px solid rgba(255, 255, 255, 0.07); }
 #MazeSideTop { border-bottom: 1px solid rgba(255, 255, 255, 0.07); }
@@ -871,8 +876,10 @@ Chrome::Chrome(QMainWindow *window, QWidget *terminals, const QList<QMenu *> &me
         l->addWidget(plus);
         l->addWidget(more);
         l->addStretch(1);
-        l->addWidget(menuButton(m_topHeader));
+        m_topMenuButton = menuButton(m_topHeader);
+        l->addWidget(m_topMenuButton);
         l->addWidget(buildWindowButtons(m_maximizeButtons));
+        m_topHeaderLayout = l;
     }
     m_cardRow = new QWidget(m_root);
     {
@@ -921,8 +928,10 @@ Chrome::Chrome(QMainWindow *window, QWidget *terminals, const QList<QMenu *> &me
         m_crumb->setProperty("mazeDrag", true);
         l->addWidget(m_crumb);
         l->addStretch(1);
-        l->addWidget(menuButton(m_sideTop));
+        m_sideMenuButton = menuButton(m_sideTop);
+        l->addWidget(m_sideMenuButton);
         l->addWidget(buildWindowButtons(m_maximizeButtons));
+        m_sideTopLayout = l;
     }
     m_sideMiddle = new QWidget(m_root);
     {
@@ -1024,6 +1033,15 @@ Chrome::Chrome(QMainWindow *window, QWidget *terminals, const QList<QMenu *> &me
     setLayoutStyle(TopTabs);
 }
 
+void Chrome::setDropDown(QWidget *lockButton)
+{
+    m_dropDown = true;
+    m_lockButton = lockButton;
+    if (m_lockButton)
+        m_lockButton->setFixedSize(34, 34);
+    setLayoutStyle(m_layout);
+}
+
 void Chrome::setLayoutStyle(Layout layout)
 {
     m_layout = layout;
@@ -1032,6 +1050,16 @@ void Chrome::setLayoutStyle(Layout layout)
         m_cardLayout->addWidget(m_terminals);
     else
         m_sideTermLayout->addWidget(m_terminals);
+    // The drop-down's lock sits before the menu button of the header in use.
+    if (m_lockButton)
+    {
+        m_topHeaderLayout->removeWidget(m_lockButton);
+        m_sideTopLayout->removeWidget(m_lockButton);
+        QBoxLayout *header = top ? m_topHeaderLayout : m_sideTopLayout;
+        QWidget *menu = top ? m_topMenuButton : m_sideMenuButton;
+        header->insertWidget(header->indexOf(menu), m_lockButton);
+        m_lockButton->show();
+    }
     m_terminals->show();
     applyVisibility();
     m_lastCurrent = -2;
@@ -1046,13 +1074,14 @@ void Chrome::applyVisibility()
     const bool full = m_window->isFullScreen();
     m_topHeader->setVisible(top && !full);
     m_cardRow->setVisible(top);
-    m_topFooter->setVisible(top && !full);
+    m_topFooter->setVisible(top && !full && !m_dropDown);
     m_sideTop->setVisible(!top && !full);
     m_sideMiddle->setVisible(!top);
     m_side->setVisible(!full);
-    m_sideStatus->setVisible(!top && !full);
+    m_sideStatus->setVisible(!top && !full && !m_dropDown);
 
-    m_cardRowLayout->setContentsMargins(full ? 0 : 12, 0, full ? 0 : 12, 0);
+    // The drop-down has no footer: a margin under the card instead.
+    m_cardRowLayout->setContentsMargins(full ? 0 : 12, 0, full ? 0 : 12, m_dropDown && !full ? 12 : 0);
     m_cardLayout->setContentsMargins(full ? 0 : 4, full ? 0 : 4, full ? 0 : 4, full ? 0 : 4);
     if (m_card->property("flat").toBool() != full)
     {

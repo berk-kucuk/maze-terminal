@@ -131,9 +131,20 @@ void ScreenWindow::getSelectionEnd( int& column , int& line )
     _screen->getSelectionEnd(column,line);
     line -= currentLine();
 }
+// A selection end may lie outside the window: the point where a drag began
+// stays put while the view scrolls into the history (drag past the top edge,
+// or the wheel with the button held), so it ends up below the window. Clamping
+// it to endWindowLine() moved that start to the last visible line, and the
+// selection kept only what was on screen (Maze Terminal). Clamp to the screen's
+// lines instead, history included.
+int ScreenWindow::selectionLine( int line ) const
+{
+    return qBound(0, line + currentLine(), lineCount() - 1);
+}
+
 void ScreenWindow::setSelectionStart( int column , int line , bool columnMode )
 {
-    _screen->setSelectionStart( column , qMin(line + currentLine(),endWindowLine())  , columnMode);
+    _screen->setSelectionStart( column , selectionLine(line) , columnMode);
 
     _bufferNeedsUpdate = true;
     emit selectionChanged();
@@ -141,7 +152,7 @@ void ScreenWindow::setSelectionStart( int column , int line , bool columnMode )
 
 void ScreenWindow::setSelectionEnd( int column , int line )
 {
-    _screen->setSelectionEnd( column , qMin(line + currentLine(),endWindowLine()) );
+    _screen->setSelectionEnd( column , selectionLine(line) );
 
     _bufferNeedsUpdate = true;
     emit selectionChanged();

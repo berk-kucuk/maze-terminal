@@ -241,6 +241,11 @@ public:
     /** forcefully disable bracketed paste mode **/
     void disableBracketedPasteMode(bool disable) override;
     bool bracketedPasteModeIsDisabled() const override;
+    /** Maze: whether a paste would arrive bracketed right now — the program
+     *  in the terminal asked for it and it is not disabled. When it is not,
+     *  every line of a pasted text runs the moment it arrives. (Not on the
+     *  plugin interface on purpose: that would change its ABI.) **/
+    bool bracketedPasteActive() const;
 
     /** Set the empty space outside the terminal */
     void setMargin(int) override;

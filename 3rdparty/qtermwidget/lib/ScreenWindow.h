@@ -246,6 +246,7 @@ signals:
 
 private:
     int endWindowLine() const;
+    int selectionLine(int line) const;
     void fillUnusedArea();
 
     Screen* _screen; // see setScreen() , screen()

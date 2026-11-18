@@ -78,6 +78,20 @@ sed -i "s/^pkgver=.*/pkgver=${VER}/" "$BUILD/PKGBUILD"
 info "Running makepkg (build + tests) ..."
 ( cd "$BUILD" && makepkg -f --noconfirm --nodeps )
 
+# ── aarch64: the same sources, built in an Arch Linux ARM root ───────────────
+#    (MazeLinux/tools/aarch64-build.sh). Skipped until that root is set up;
+#    MAZE_NO_AARCH64=1 skips it on purpose. A failure here keeps the x86_64
+#    package and is reported at the end.
+AARCH64_TOOL="$ROOT/../MazeLinux/tools/aarch64-build.sh"
+AARCH64_FAILED=0
+if [[ "${MAZE_NO_AARCH64:-0}" != 1 ]]; then
+  if [[ -x "$AARCH64_TOOL" ]] && "$AARCH64_TOOL" ready; then
+    "$AARCH64_TOOL" build "$BUILD" "$OUT" || AARCH64_FAILED=1
+  else
+    warn "aarch64 skipped — set the ARM root up once: MazeLinux/tools/aarch64-build.sh setup"
+  fi
+fi
+
 PKG="$(find "$BUILD" -maxdepth 1 -name 'maze-terminal-*.pkg.tar.zst' ! -name '*-debug-*' -print -quit)"
 [[ -n "$PKG" ]] || die "makepkg finished but produced no .pkg.tar.zst"
 mv -f "$PKG" "$OUT/"
@@ -91,3 +105,8 @@ echo
 echo "  To install (this script does not do it for you):"
 echo "    sudo pacman -U \"$FINAL\""
 echo
+
+if [[ "$AARCH64_FAILED" == 1 ]]; then
+  warn "the aarch64 build FAILED (x86_64 package above is fine) — see the log"
+  exit 1
+fi

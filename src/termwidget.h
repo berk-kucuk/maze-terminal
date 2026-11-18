@@ -22,6 +22,7 @@
 #include <qtermwidget.h>
 
 #include "terminalconfig.h"
+#include "maze/pasteguard.h"
 
 #include <QAction>
 #include "dbusaddressable.h"
@@ -54,6 +55,9 @@ class TermWidgetImpl : public QTermWidget
         // Clean text is pasted at once; anything else is shown first.
         void guardedPaste(bool selection);
         bool guardedDrop(const QString &text);
+        // PasteGuard's verdict, plus what only the terminal knows: a text of
+        // several lines that arrives unbracketed runs line by line.
+        Maze::PasteVerdict verdictFor(const QString &text, bool bracketed) const;
 
         // Whether the program in the foreground runs as root (a root shell,
         // or sudo itself), read from /proc.
