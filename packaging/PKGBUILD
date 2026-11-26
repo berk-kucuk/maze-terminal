@@ -10,7 +10,7 @@
 # drawn as filled cells like Konsole — so the qtermwidget package is not used.
 
 pkgname=maze-terminal
-pkgver=1.0.0
+pkgver=1.1.1
 pkgrel=3
 pkgdesc="Maze Terminal — terminal emulator with a paste guard, Tor tabs and incognito tabs (QTerminal fork)"
 arch=('x86_64' 'aarch64')

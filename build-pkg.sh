@@ -72,8 +72,13 @@ tar czf "$BUILD/maze-terminal-${VER}.tar.gz" -C "$ROOT" \
   --transform "s,^\.,maze-terminal-${VER}," .
 
 cp "$PKG_SRC/PKGBUILD" "$BUILD/"
-# Pin pkgver to the version we just built (leaves packaging/PKGBUILD untouched).
+# Pin pkgver to the version we just built, in the build copy and in
+# packaging/PKGBUILD too, so the source PKGBUILD never lags behind the package.
 sed -i "s/^pkgver=.*/pkgver=${VER}/" "$BUILD/PKGBUILD"
+if ! grep -qx "pkgver=${VER}" "$PKG_SRC/PKGBUILD"; then
+    sed -i "s/^pkgver=.*/pkgver=${VER}/" "$PKG_SRC/PKGBUILD"
+    info "packaging/PKGBUILD pkgver -> ${VER}"
+fi
 
 info "Running makepkg (build + tests) ..."
 ( cd "$BUILD" && makepkg -f --noconfirm --nodeps )
